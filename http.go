@@ -136,7 +136,7 @@ func worker2(c chan map[string]string, t test_struct) {
 	//encode `output` as JSON
 	dataJSON, _ := json.MarshalIndent(output, "", "  ")
 	//post the json to the url
-	//https://webhook.site/#!/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb/
+	//https://webhook.site/#!/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb
 	resp, _ := http.Post("https://webhook.site/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb/", "/", bytes.NewBuffer(dataJSON))
 
 	fmt.Println(string(dataJSON))
