@@ -9,5 +9,5 @@ step 2 -- Open the new tab in the terminal and run
 
 step 3 -- open the browser and enter this url
 
-	https://webhook.site/#!/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb/dcb3c422-4add-492f-ab83-d3347bb63f6f/
+	https://webhook.site/#!/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb
 
