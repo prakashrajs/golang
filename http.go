@@ -91,7 +91,7 @@ func (jsonmap OrderedMap) ToJson(sequence ...string) {
 	//convert the *bytes to []bytes for http post
 	readBuf, _ := ioutil.ReadAll(buffer)
 	//post the json data to http://weebhook.site and print response
-
+	print(string(readBuf))
 	resp, _ := http.Post(POSTURL, "/", bytes.NewBuffer(readBuf))
 	fmt.Println(resp)
 }
@@ -102,8 +102,7 @@ func worker2(c chan map[string]string, t map[string]interface{}) {
 	result := make(map[string]string)
 	atrkmap := make(map[string]JsonInnerFormat)
 	uatrtmap := make(map[string]JsonInnerFormat)
-	attr := 0
-	uattr := 0
+	var uattr, attr = 0, 0
 
 	//range the channel and form the new map
 	for k := range t {

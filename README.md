@@ -14,7 +14,6 @@ step 2 -- Open the new tab in the terminal and run the test cases
 
 
 
-
 step 3 -- open the browser and enter this url
 
 	https://webhook.site/#!/e3ca3185-0d17-4bae-95a0-c8a5fe4d38fe/
