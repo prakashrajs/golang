@@ -4,88 +4,46 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
-	"reflect"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 // create a handler struct
 type HttpHandler struct{}
 
-//create the structure according to the request recieve
-type test_struct struct {
-	Ev     string
-	Et     string
-	Id     string
-	Uid    string
-	Mid    string
-	T      string
-	P      string
-	L      string
-	Sc     string
-	Atrk1  string
-	Atrv1  string
-	Atrt1  string
-	Atrk2  string
-	Atrv2  string
-	Atrt2  string
-	Uatrk1 string
-	Uatrv1 string
-	Uatrt1 string
-	Uatrk2 string
-	Uatrv2 string
-	Uatrt2 string
-	Uatrk3 string
-	Uatrv3 string
-	Uatrt3 string
-}
-
-//define the structure to store json type
-type Attributes struct {
-	Form_varient map[string]string
-	Ref          map[string]string
-}
-
-type Traits struct {
-	Name  map[string]string
-	Email map[string]string
-	Age   map[string]string
-}
-
-type Datas struct {
-	Event, Event_type, App_id, User_id, Message_id, Page_title, Page_url, Browser_language, Screen_size string
-	Attributes                                                                                          Attributes
-	Traits                                                                                              Traits
-}
+var POSTURL = "https://webhook.site/e3ca3185-0d17-4bae-95a0-c8a5fe4d38fe"
+var PORT = ":9000"
 
 // implement `ServeHTTP` method on `HttpHandler` struct
-func (h HttpHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+func handler(rw http.ResponseWriter, req *http.Request) {
 
-	decoder := json.NewDecoder(req.Body)
-	var t test_struct
-	err := decoder.Decode(&t)
+	//Read the request body from http
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		panic(err)
+	}
+	//declare the interface map and unmarshal the request body
+	var datas map[string]interface{}
+	err = json.Unmarshal([]byte(body), &datas)
 	if err != nil {
 		panic(err)
 	}
 
-	v := reflect.ValueOf(t)
-	typeOfS := v.Type()
-
-	//create the channel send this request to worker
+	//Create a channel and send the request in each go routine
 	c := make(chan map[string]string)
-	for i := 0; i < v.NumField(); i++ {
-		key := typeOfS.Field(i).Name
-		value := v.Field(i).Interface()
+	for key, value := range datas {
 		val, _ := value.(string)
 		go worker(c, key, val)
 	}
-	//parse the data send it to worker
-	go worker2(c, t)
 
-	// create response binary data
-	data := []byte("Success!")
+	//pass the channel and unmarshal to worker 2 to form the json
+	fmt.Println("Worker 2 start")
+	go worker2(c, datas)
 
-	// write `data` to response
-	res.Write(data)
 }
 
 //create the worker to make this into map and return
@@ -97,59 +55,116 @@ func worker(c chan map[string]string, key string, value string) {
 	c <- retmap
 }
 
+//Form the struct for inner json attribute
+type JsonInnerFormat struct {
+	Value string `json:"value"`
+	Type  string `json:"type"`
+}
+
+//Declare the orderedmap to store the new map according to given json variable
+type OrderedMap map[string]interface{}
+
+//This function to form ordered json method
+func (jsonmap OrderedMap) ToJson(sequence ...string) {
+
+	buffer := &bytes.Buffer{}
+	buffer.Write([]byte{'{', '\n'})
+	//iterate the given sequence of map
+	for _, key := range sequence {
+		//check if the key is attribute or traits and form the inner json marshal
+		if string(key) == "attribute" || string(key) == "traits" {
+			formJson, _ := json.MarshalIndent(jsonmap[key], "\t", "  ")
+			fmt.Fprintf(buffer, "\t\"%s\": %s", key, formJson)
+
+			if string(key) == "attribute" {
+				buffer.WriteByte(',')
+			}
+			//else make the json format from the key and map
+		} else {
+			fmt.Fprintf(buffer, "\t\"%s\": \"%v\"", key, jsonmap[key])
+			buffer.WriteByte(',')
+		}
+		buffer.WriteByte('\n')
+	}
+	buffer.Write([]byte{'}', '\n'})
+
+	//convert the *bytes to []bytes for http post
+	readBuf, _ := ioutil.ReadAll(buffer)
+	//post the json data to http://weebhook.site and print response
+
+	resp, _ := http.Post(POSTURL, "/", bytes.NewBuffer(readBuf))
+	fmt.Println(resp)
+}
+
 //declare worker2 to parse the data from map and make json format
-func worker2(c chan map[string]string, t test_struct) {
+func worker2(c chan map[string]string, t map[string]interface{}) {
 
-	//parse the data from the channel and store in map
-	value := reflect.ValueOf(t)
-	var output Datas
 	result := make(map[string]string)
+	atrkmap := make(map[string]JsonInnerFormat)
+	uatrtmap := make(map[string]JsonInnerFormat)
+	attr := 0
+	uattr := 0
 
-	for i := 0; i < value.NumField(); i++ {
+	//range the channel and form the new map
+	for k := range t {
+		print(k)
 		m := <-c
-		for k, v := range m {
-			result[k] = v
+		for key, value := range m {
+			result[key] = value
+			if strings.Contains(key, "atrk") && string(key[0]) == "a" {
+				re := regexp.MustCompile("[0-9]+")
+				get := re.FindAllString(key, -1)
+				i, _ := strconv.Atoi(get[0])
+				if i > attr {
+					attr = i
+				}
+			} else if strings.Contains(key, "uatrk") {
+				re := regexp.MustCompile("[0-9]+")
+				get := re.FindAllString(key, -1)
+				i, _ := strconv.Atoi(get[0])
+				if i > uattr {
+					uattr = i
+				}
+			}
 		}
 	}
-	//form the json format
-	output = Datas{
-		Event:            result["Ev"],
-		Event_type:       result["Et"],
-		App_id:           result["Id"],
-		User_id:          result["Uid"],
-		Message_id:       result["Mid"],
-		Page_title:       result["T"],
-		Page_url:         result["P"],
-		Browser_language: result["L"],
-		Screen_size:      result["Sc"],
-		Attributes: Attributes{
-			Form_varient: map[string]string{"value": result["Atrv1"], "type": result["Atrt1"]},
-			Ref:          map[string]string{"value": result["Atrv2"], "type": result["Atrt2"]},
-		},
-		Traits: Traits{
-			Name:  map[string]string{"value": result["Uatrv1"], "type": result["Uatrt1"]},
-			Age:   map[string]string{"value": result["Uatrv2"], "type": result["Uatrt2"]},
-			Email: map[string]string{"value": result["Uatrv3"], "type": result["Uatrt3"]},
-		},
+
+	//for the attribute and traits from the map result
+	for i := 1; i <= attr; i++ {
+		get := strconv.Itoa(i)
+		atrkmap[result["atrk"+get]] = JsonInnerFormat{Value: result["atrv"+get], Type: result["atrt"+get]}
 	}
 
-	//encode `output` as JSON
-	dataJSON, _ := json.MarshalIndent(output, "", "  ")
-	//post the json to the url
-	//https://webhook.site/#!/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb
-	resp, _ := http.Post("https://webhook.site/1ce4e5f8-87da-4920-aa9a-c4ebc03b1adb/", "/", bytes.NewBuffer(dataJSON))
+	for i := 1; i <= uattr; i++ {
+		get := strconv.Itoa(i)
+		uatrtmap[result["uatrk"+get]] = JsonInnerFormat{Value: result["uatrv"+get], Type: result["uatrt"+get]}
 
-	fmt.Println(string(dataJSON))
-	fmt.Println(resp)
+	}
+	//form the ordered map and call the json and send the request to webhook
+	jsonmap := OrderedMap{
+		"event":            result["ev"],
+		"event_type":       result["et"],
+		"app_id":           result["id"],
+		"user_id":          result["uid"],
+		"message_id":       result["mid"],
+		"page_title":       result["t"],
+		"page_url":         result["p"],
+		"browser_language": result["l"],
+		"screen_size":      result["sc"],
+		"attribute":        atrkmap,
+		"traits":           uatrtmap}
+
+	jsonmap.ToJson("event", "event_type", "app_id", "user_id", "message_id", "page_title", "page_url", "browser_language", "screen_size", "attribute", "traits")
 
 }
 
 func main() {
 
-	// create a new handler
-	handler := HttpHandler{}
+	//Create the handler
+	http.HandleFunc("/json", handler)
 
-	// listen and serve
-	http.ListenAndServe(":9000", handler)
+	//listen the port
+	log.Fatal(http.ListenAndServe(PORT, nil))
+	fmt.Println("Done")
 
 }
